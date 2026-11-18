@@ -1,6 +1,6 @@
 import pytest
 
-from app.core import NGramModel, load_corpus, preprocess, tokenize
+from app.core import NGramModel, generate_text, load_corpus, preprocess, tokenize
 
 
 def test_milestone_1_loads_original_corpus_and_preprocesses_text(tmp_path):
@@ -31,3 +31,19 @@ def test_milestone_2_handles_invalid_smoothing_and_contexts():
     model = NGramModel().fit(["science facts"])
     with pytest.raises(ValueError, match="at most two"):
         model.probability("facts", ["too", "many", "tokens"])
+
+
+def test_milestone_3_expands_prompt_with_relevant_local_continuation():
+    prompt = "Plants use sunlight"
+    expanded = generate_text(prompt, max_words=5)
+    assert expanded.startswith(prompt)
+    assert expanded[len(prompt):].strip().split()[:3] == ["water", "and", "carbon"]
+    assert len(expanded[len(prompt):].split()) == 5
+    assert generate_text(prompt, max_words=0) == prompt
+
+
+def test_milestone_3_rejects_invalid_generation_requests():
+    with pytest.raises(ValueError, match="prompt"):
+        generate_text("   ")
+    with pytest.raises(ValueError, match="non-negative"):
+        generate_text("lesson", max_words=-1)

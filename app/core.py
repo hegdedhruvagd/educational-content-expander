@@ -98,3 +98,34 @@ class NGramModel:
 def train_model(corpus: Iterable[str] | None = None, k: float = 1.0) -> NGramModel:
     """Build a model from supplied documents or the bundled educational corpus."""
     return NGramModel(k=k).fit(load_corpus() if corpus is None else corpus)
+
+
+def generate_text(prompt: str, model: NGramModel | None = None, max_words: int = 40) -> str:
+    """Append up to ``max_words`` locally predicted words while preserving prompt text."""
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise ValueError("prompt must contain at least one non-space character")
+    if max_words < 0:
+        raise ValueError("max_words must be non-negative")
+    active_model = model or train_model()
+    if not isinstance(active_model, NGramModel) or not active_model.unigram_counts:
+        raise ValueError("a trained n-gram model is required")
+    generated = tokenize(prompt)
+    if not generated or max_words == 0:
+        return prompt
+    continuation: list[str] = []
+    for _ in range(max_words):
+        context = generated[-2:]
+        # Select only observed words so the model never emits the unknown sentinel.
+        candidates = sorted(active_model.unigram_counts)
+        next_word = max(
+            candidates,
+            key=lambda word: (
+                active_model.probability(word, context),
+                active_model.probability(word, context[-1:]) if context else 0.0,
+                active_model.unigram_counts[word],
+                word,
+            ),
+        )
+        continuation.append(next_word)
+        generated.append(next_word)
+    return prompt + (" " if not prompt[-1].isspace() else "") + " ".join(continuation)
