@@ -47,3 +47,31 @@ def test_milestone_3_rejects_invalid_generation_requests():
         generate_text("   ")
     with pytest.raises(ValueError, match="non-negative"):
         generate_text("lesson", max_words=-1)
+
+
+def test_milestone_4_cli_trains_saves_loads_and_expands(tmp_path, capsys):
+    from app.cli import main
+
+    model_path = tmp_path / "trained.json"
+    main(["train", "--output", str(model_path)])
+    assert model_path.exists()
+    assert "saved to" in capsys.readouterr().out
+
+    main(["expand", "Plants", "use", "sunlight", "--model", str(model_path), "--words", "3"])
+    output = capsys.readouterr().out.strip()
+    assert output.startswith("Plants use sunlight")
+    assert output.endswith("water and") or output.endswith("water and carbon")
+
+
+def test_milestone_4_cli_help_and_actionable_errors(capsys):
+    from app.cli import main
+
+    with pytest.raises(SystemExit) as help_exit:
+        main(["--help"])
+    assert help_exit.value.code == 0
+    assert "train" in capsys.readouterr().out
+
+    with pytest.raises(SystemExit) as error_exit:
+        main(["expand", "lesson", "--model", "missing-model.json"])
+    assert error_exit.value.code == 2
+    assert "Model file not found" in capsys.readouterr().err

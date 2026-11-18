@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+import json
+import math
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Iterable, Sequence
@@ -38,8 +40,8 @@ class NGramModel:
     """Bigram and trigram counts with add-k conditional probabilities."""
 
     def __init__(self, k: float = 1.0):
-        if k < 0:
-            raise ValueError("smoothing k must be non-negative")
+        if not math.isfinite(k) or k < 0:
+            raise ValueError("smoothing k must be a finite non-negative number")
         self.k = float(k)
         self.vocabulary: set[str] = {UNKNOWN_TOKEN}
         self.unigram_counts: Counter[str] = Counter()
@@ -93,6 +95,56 @@ class NGramModel:
             count = self.trigram_counts[(*normalized_context, word)]
             total = self.trigram_context_counts[normalized_context]
         return (count + self.k) / (total + self.k * self.vocabulary_size) if total or self.k else 0.0
+
+    def to_dict(self) -> dict:
+        """Return a JSON-compatible representation of the trained model."""
+        return {
+            "format_version": 1,
+            "k": self.k,
+            "vocabulary": sorted(self.vocabulary),
+            "unigram_counts": dict(self.unigram_counts),
+            "bigram_counts": [[*ngram, count] for ngram, count in self.bigram_counts.items()],
+            "trigram_counts": [[*ngram, count] for ngram, count in self.trigram_counts.items()],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> NGramModel:
+        """Restore a model saved by :meth:`to_dict`."""
+        if not isinstance(data, dict):
+            raise ValueError("model data must be a JSON object")
+        if data.get("format_version") != 1:
+            raise ValueError("unsupported model file format")
+        model = cls(k=float(data["k"]))
+        model.vocabulary = set(data["vocabulary"])
+        model.unigram_counts.update({str(word): int(count) for word, count in data["unigram_counts"].items()})
+        for first, second, count in data["bigram_counts"]:
+            model.bigram_counts[(first, second)] = int(count)
+            model.bigram_context_counts[first] += int(count)
+        for first, second, third, count in data["trigram_counts"]:
+            model.trigram_counts[(first, second, third)] = int(count)
+            model.trigram_context_counts[(first, second)] += int(count)
+        if not model.unigram_counts:
+            raise ValueError("model file contains no training data")
+        return model
+
+
+def save_model(model: NGramModel, path: str | Path) -> None:
+    """Save a trained model as readable JSON."""
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(model.to_dict(), indent=2), encoding="utf-8")
+
+
+def load_model(path: str | Path) -> NGramModel:
+    """Load a model JSON file and report file or format errors clearly."""
+    target = Path(path)
+    try:
+        data = json.loads(target.read_text(encoding="utf-8"))
+        return NGramModel.from_dict(data)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"Model file not found: {target}") from exc
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid model file '{target}': {exc}") from exc
 
 
 def train_model(corpus: Iterable[str] | None = None, k: float = 1.0) -> NGramModel:
