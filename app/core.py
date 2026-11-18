@@ -1,0 +1,100 @@
+"""Local educational corpus and n-gram language model."""
+
+from __future__ import annotations
+
+import re
+from collections import Counter, defaultdict
+from pathlib import Path
+from typing import Iterable, Sequence
+
+CORPUS_PATH = Path(__file__).with_name("data") / "educational_corpus.txt"
+UNKNOWN_TOKEN = "<unk>"
+_TOKEN_PATTERN = re.compile(r"[a-z0-9]+(?:'[a-z]+)?", re.IGNORECASE)
+
+
+def load_corpus(path: str | Path | None = None) -> list[str]:
+    """Load educational text documents from a UTF-8 file, one document per line."""
+    corpus_path = Path(path) if path is not None else CORPUS_PATH
+    try:
+        contents = corpus_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise FileNotFoundError(f"Could not read corpus file: {corpus_path}") from exc
+    return [line.strip() for line in contents.splitlines() if line.strip()]
+
+
+def tokenize(text: str) -> list[str]:
+    """Normalize text and return word tokens, retaining contractions as one token."""
+    if not isinstance(text, str):
+        raise TypeError("text must be a string")
+    return [match.group(0).casefold() for match in _TOKEN_PATTERN.finditer(text)]
+
+
+def preprocess(text: str) -> list[str]:
+    """Tokenize a document and replace an empty document with no tokens."""
+    return tokenize(text)
+
+
+class NGramModel:
+    """Bigram and trigram counts with add-k conditional probabilities."""
+
+    def __init__(self, k: float = 1.0):
+        if k < 0:
+            raise ValueError("smoothing k must be non-negative")
+        self.k = float(k)
+        self.vocabulary: set[str] = {UNKNOWN_TOKEN}
+        self.unigram_counts: Counter[str] = Counter()
+        self.bigram_counts: Counter[tuple[str, str]] = Counter()
+        self.trigram_counts: Counter[tuple[str, str, str]] = Counter()
+        self.bigram_context_counts: Counter[str] = Counter()
+        self.trigram_context_counts: Counter[tuple[str, str]] = Counter()
+
+    def fit(self, documents: Iterable[str | Sequence[str]]) -> NGramModel:
+        """Count n-grams in documents without joining across document boundaries."""
+        self.vocabulary = {UNKNOWN_TOKEN}
+        self.unigram_counts.clear()
+        self.bigram_counts.clear()
+        self.trigram_counts.clear()
+        self.bigram_context_counts.clear()
+        self.trigram_context_counts.clear()
+        for document in documents:
+            tokens = tokenize(document) if isinstance(document, str) else [str(t).casefold() for t in document]
+            if not tokens:
+                continue
+            self.vocabulary.update(tokens)
+            self.unigram_counts.update(tokens)
+            for index in range(1, len(tokens)):
+                self.bigram_counts[(tokens[index - 1], tokens[index])] += 1
+                self.bigram_context_counts[tokens[index - 1]] += 1
+            for index in range(2, len(tokens)):
+                context = (tokens[index - 2], tokens[index - 1])
+                self.trigram_counts[(*context, tokens[index])] += 1
+                self.trigram_context_counts[context] += 1
+        return self
+
+    @property
+    def vocabulary_size(self) -> int:
+        return max(1, len(self.vocabulary))
+
+    def probability(self, word: str, context: Sequence[str] = ()) -> float:
+        """Return P(word | context) with add-k smoothing (context length 0–2)."""
+        if len(context) > 2:
+            raise ValueError("context may contain at most two tokens")
+        word = word.casefold()
+        if word not in self.vocabulary:
+            word = UNKNOWN_TOKEN
+        normalized_context = tuple(token.casefold() for token in context)
+        if not normalized_context:
+            count = self.unigram_counts[word]
+            total = sum(self.unigram_counts.values())
+        elif len(normalized_context) == 1:
+            count = self.bigram_counts[(normalized_context[0], word)]
+            total = self.bigram_context_counts[normalized_context[0]]
+        else:
+            count = self.trigram_counts[(*normalized_context, word)]
+            total = self.trigram_context_counts[normalized_context]
+        return (count + self.k) / (total + self.k * self.vocabulary_size) if total or self.k else 0.0
+
+
+def train_model(corpus: Iterable[str] | None = None, k: float = 1.0) -> NGramModel:
+    """Build a model from supplied documents or the bundled educational corpus."""
+    return NGramModel(k=k).fit(load_corpus() if corpus is None else corpus)
