@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import json
 import math
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
 from typing import Iterable, Sequence
 

@@ -1,6 +1,6 @@
 import pytest
 
-from app.core import NGramModel, generate_text, load_corpus, preprocess, tokenize
+from app.core import NGramModel, generate_text, load_corpus, load_model, preprocess, save_model, tokenize, train_model
 
 
 def test_milestone_1_loads_original_corpus_and_preprocesses_text(tmp_path):
@@ -61,6 +61,20 @@ def test_milestone_4_cli_trains_saves_loads_and_expands(tmp_path, capsys):
     output = capsys.readouterr().out.strip()
     assert output.startswith("Plants use sunlight")
     assert output.endswith("water and") or output.endswith("water and carbon")
+
+
+def test_milestone_4_model_save_load_round_trip(tmp_path):
+    original = train_model(k=0.25)
+    model_path = tmp_path / "model.json"
+
+    save_model(original, model_path)
+    restored = load_model(model_path)
+
+    assert restored.k == original.k
+    assert restored.vocabulary == original.vocabulary
+    assert restored.bigram_counts == original.bigram_counts
+    assert restored.trigram_counts == original.trigram_counts
+    assert restored.probability("water", ["sunlight"]) == original.probability("water", ["sunlight"])
 
 
 def test_milestone_4_cli_help_and_actionable_errors(capsys):

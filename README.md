@@ -6,7 +6,7 @@ A small command-line tool that expands educational phrases with a local statisti
 
 ## Requirements and setup
 
-Python 3.12 or newer is recommended. The n-gram implementation uses only the Python standard library. Install the project requirements (needed by the preserved starter smoke test):
+Python 3.12 or newer is recommended. The n-gram implementation uses only the Python standard library; pytest is the only installed dependency and is used for the automated test suite.
 
 ```bash
 python3.12 -m venv .venv
@@ -46,14 +46,13 @@ $ python -m app.cli expand "Plants use sunlight" --words 8
 Plants use sunlight water and carbon dioxide to make food through
 ```
 
-Use `python -m app.cli train --help` to see training options. `python -m app.cli hello` remains available as a quick plumbing check.
+Use `python -m app.cli train --help` or `python -m app.cli expand --help` to see command options.
 
 ## Architecture
 
 - `app/data/educational_corpus.txt` contains short original lessons in science, math, and reading. Each non-empty line is a document.
 - `app/core.py` loads UTF-8 corpus files, lowercases and tokenizes words, counts unigrams, bigrams, and trigrams, calculates add-k conditional probabilities, saves/loads JSON models, and generates continuations.
-- `app/cli.py` provides `train`, `expand`, and `hello` commands. If `expand` receives no model path, it trains from the bundled corpus in memory.
-- `app/storage.py` and `app/llm.py` are preserved starter modules. The expander does not use the starter chat client.
+- `app/cli.py` provides `train` and `expand` commands. If `expand` receives no model path, it trains from the bundled corpus in memory.
 
 The model uses up to the last two words as context. It chooses the highest-probability observed next token, using shorter context and corpus frequency to break ties. Add-k smoothing gives nonzero probability to unseen words and contexts when `k > 0`; unknown prompt tokens are handled safely. Output is deterministic and intentionally limited by the small corpus, so it is best suited to short, on-topic lesson starters rather than polished long-form writing.
 
@@ -74,7 +73,7 @@ Run the full test suite from the repository root:
 python -m pytest -q
 ```
 
-The tests cover corpus loading and preprocessing, bigram/trigram counts and smoothing, prompt continuation and length, model persistence, CLI help/errors, and the original starter smoke tests.
+The tests cover corpus loading and preprocessing, bigram/trigram counts and smoothing, prompt continuation and length, model persistence, and CLI help/errors.
 
 ## Milestones
 
